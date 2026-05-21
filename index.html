@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="おんぷれんしゅう">
+<title>おんぷ よみ れんしゅう</title>
+<script src="https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js"></script>
+<style>
+  :root{
+    --bg:#fff6e0;
+    --card:#ffffff;
+    --ink:#3a3a55;
+    --accent:#ff7a59;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:"Hiragino Maru Gothic ProN","Hiragino Maru Gothic Pro",
+      "Yu Gothic","Hiragino Kaku Gothic ProN",sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    -webkit-text-size-adjust:100%;
+  }
+  .app{
+    max-width:480px;
+    margin:0 auto;
+    padding:14px 14px 32px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  h1{
+    text-align:center;
+    font-size:1.5rem;
+    margin:6px 0 0;
+    color:var(--accent);
+  }
+  /* レベル選択 */
+  .levels{
+    display:flex;
+    gap:8px;
+  }
+  .levels button{
+    flex:1;
+    min-height:56px;
+    font-size:1.05rem;
+    font-weight:bold;
+    border:3px solid #cfc3ee;
+    border-radius:16px;
+    background:#f0ebff;
+    color:#5b4b9a;
+    touch-action:manipulation;
+    cursor:pointer;
+  }
+  .levels button.active{
+    background:#7c5cd6;
+    border-color:#7c5cd6;
+    color:#fff;
+  }
+  /* 譜表カード */
+  .score-card{
+    background:var(--card);
+    border-radius:20px;
+    padding:14px 10px 8px;
+    box-shadow:0 6px 16px rgba(0,0,0,.10);
+    text-align:center;
+  }
+  .clef-label{
+    font-size:1.1rem;
+    font-weight:bold;
+    color:#7c5cd6;
+    margin-bottom:4px;
+  }
+  #score{ width:100%; }
+  #score svg{ width:100%; height:auto; display:block; }
+  /* 答え表示 */
+  .answer-card{
+    background:#fff;
+    border-radius:20px;
+    box-shadow:0 6px 16px rgba(0,0,0,.10);
+    padding:16px 10px;
+    text-align:center;
+    min-height:84px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .answer-card .placeholder{
+    font-size:1.1rem;
+    color:#c9c2b4;
+  }
+  .answer-card .answer{
+    font-size:2.6rem;
+    font-weight:bold;
+    color:var(--accent);
+    letter-spacing:.04em;
+  }
+  /* 操作ボタン */
+  .actions{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .actions button{
+    min-height:64px;
+    font-size:1.3rem;
+    font-weight:bold;
+    border:none;
+    border-radius:18px;
+    color:#fff;
+    touch-action:manipulation;
+    cursor:pointer;
+    box-shadow:0 4px 0 rgba(0,0,0,.15);
+  }
+  .actions button:active{ transform:translateY(2px); box-shadow:0 2px 0 rgba(0,0,0,.15); }
+  .btn-answer{ background:#43a047; }
+  .btn-next{ background:#fb8c00; }
+  /* スタートオーバーレイ */
+  .overlay{
+    position:fixed;
+    inset:0;
+    background:linear-gradient(160deg,#ffd66b,#ff9a59);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:24px;
+    z-index:50;
+    padding:24px;
+    text-align:center;
+  }
+  .overlay h2{
+    font-size:2rem;
+    color:#fff;
+    margin:0;
+    text-shadow:0 2px 6px rgba(0,0,0,.2);
+  }
+  .overlay p{
+    font-size:1.05rem;
+    color:#fff;
+    margin:0;
+  }
+  #startBtn{
+    min-height:90px;
+    min-width:240px;
+    font-size:2rem;
+    font-weight:bold;
+    border:none;
+    border-radius:26px;
+    background:#fff;
+    color:var(--accent);
+    box-shadow:0 6px 0 rgba(0,0,0,.18);
+    touch-action:manipulation;
+    cursor:pointer;
+  }
+  #startBtn:active{ transform:translateY(3px); box-shadow:0 3px 0 rgba(0,0,0,.18); }
+  .hidden{ display:none !important; }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="overlay">
+  <h2>♪ おんぷ よみ れんしゅう ♪</h2>
+  <p>ボタンを おして はじめよう</p>
+  <button id="startBtn">スタート</button>
+</div>
+
+<div class="app">
+  <h1>♪ おんぷ よみ れんしゅう ♪</h1>
+
+  <div class="levels" id="levels">
+    <button data-level="1">レベル1<br>たんおん</button>
+    <button data-level="2">レベル2<br>わおん</button>
+    <button data-level="3">レベル3<br>1しょうせつ</button>
+  </div>
+
+  <div class="score-card">
+    <div class="clef-label" id="clefLabel">&nbsp;</div>
+    <div id="score"></div>
+  </div>
+
+  <div class="answer-card" id="answerCard">
+    <span class="placeholder">「こたえあわせ」を おしてね</span>
+  </div>
+
+  <div class="actions">
+    <button class="btn-answer" id="answerBtn">♪ こたえあわせ</button>
+    <button class="btn-next" id="nextBtn">つぎの もんだい</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- 音楽データ ----------------------------------------------------
+  var LETTERS = ['C','D','E','F','G','A','B'];
+  var PITCH_CLASS = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+  var JP_NAME = { C:'ド', D:'レ', E:'ミ', F:'ファ', G:'ソ', A:'ラ', B:'シ' };
+
+  // 白鍵を範囲指定で列挙(縦位置は音名+オクターブのみで決まる)
+  function whiteRange(loL, loO, hiL, hiO){
+    var res = [], li = LETTERS.indexOf(loL), oct = loO;
+    while(true){
+      res.push({ letter:LETTERS[li], octave:oct });
+      if(LETTERS[li] === hiL && oct === hiO) break;
+      li++;
+      if(li > 6){ li = 0; oct++; }
+    }
+    return res;
+  }
+  // 加線2本以内に収まる音域
+  var TREBLE_POOL = whiteRange('C',4,'A',5); // ト音記号 C4〜A5(13音)
+  var BASS_POOL   = whiteRange('C',2,'E',4); // ヘ音記号 C2〜E4(17音)
+
+  function randInt(min, max){ return min + Math.floor(Math.random() * (max - min + 1)); }
+  function pick(arr){ return arr[randInt(0, arr.length - 1)]; }
+
+  // 単音・小節用: 30%で臨時記号。E#/B#/Cb/Fb など紛らわしい異名同音は避ける
+  function accidentalFor(letter){
+    if(Math.random() >= 0.3) return null;
+    var canSharp = (letter !== 'E' && letter !== 'B');
+    var canFlat  = (letter !== 'C' && letter !== 'F');
+    if(canSharp && canFlat) return Math.random() < 0.5 ? '#' : 'b';
+    if(canSharp) return '#';
+    if(canFlat)  return 'b';
+    return null;
+  }
+
+  // 3和音: 白鍵根音に3度ずつ堆積するとCメジャーのダイアトニック三和音になる
+  function makeTriad(pool){
+    var maxRoot = pool.length - 5; // 第5音(根音+4)が音域に収まる範囲
+    var ri = randInt(0, maxRoot);
+    return [pool[ri], pool[ri+2], pool[ri+4]].map(function(p){
+      return { letter:p.letter, octave:p.octave, accidental:null };
+    });
+  }
+
+  // 平均律 A4=440Hz
+  function noteFreq(n){
+    var pc = PITCH_CLASS[n.letter] + (n.accidental === '#' ? 1 : n.accidental === 'b' ? -1 : 0);
+    var midi = 12 * (n.octave + 1) + pc;
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+  function vfKey(n){ return n.letter.toLowerCase() + '/' + n.octave; }
+  function jpName(n){
+    return JP_NAME[n.letter] + (n.accidental === '#' ? '♯' : n.accidental === 'b' ? '♭' : '');
+  }
+
+  // ---- 状態 ----------------------------------------------------------
+  var state = { level:1, clef:'treble', notes:[] };
+
+  // ---- DOM -----------------------------------------------------------
+  var overlay   = document.getElementById('overlay');
+  var startBtn  = document.getElementById('startBtn');
+  var levelsBox = document.getElementById('levels');
+  var clefLabel = document.getElementById('clefLabel');
+  var scoreDiv  = document.getElementById('score');
+  var answerCard= document.getElementById('answerCard');
+  var answerBtn = document.getElementById('answerBtn');
+  var nextBtn   = document.getElementById('nextBtn');
+
+  // ---- 五線譜描画(VexFlow 4)----------------------------------------
+  var SCORE_W = 420, SCORE_H = 280;
+
+  function render(){
+    scoreDiv.innerHTML = '';
+    var VF = Vex.Flow;
+    var renderer = new VF.Renderer(scoreDiv, VF.Renderer.Backends.SVG);
+    renderer.resize(SCORE_W, SCORE_H);
+    var ctx = renderer.getContext();
+
+    var stave = new VF.Stave(10, 100, SCORE_W - 30);
+    stave.addClef(state.clef);
+    if(state.level === 3) stave.addTimeSignature('4/4');
+    stave.setContext(ctx).draw();
+
+    var staveNotes;
+    if(state.level === 3){
+      staveNotes = state.notes.map(function(n){
+        var sn = new VF.StaveNote({ clef:state.clef, keys:[vfKey(n)], duration:'q' });
+        if(n.accidental) sn.addModifier(new VF.Accidental(n.accidental), 0);
+        return sn;
+      });
+    } else if(state.level === 2){
+      var chord = new VF.StaveNote({
+        clef:state.clef, keys:state.notes.map(vfKey), duration:'w'
+      });
+      state.notes.forEach(function(n, i){
+        if(n.accidental) chord.addModifier(new VF.Accidental(n.accidental), i);
+      });
+      staveNotes = [chord];
+    } else {
+      var n0 = state.notes[0];
+      var sn0 = new VF.StaveNote({ clef:state.clef, keys:[vfKey(n0)], duration:'w' });
+      if(n0.accidental) sn0.addModifier(new VF.Accidental(n0.accidental), 0);
+      staveNotes = [sn0];
+    }
+
+    var voice = new VF.Voice({ num_beats:4, beat_value:4 });
+    voice.setMode(VF.Voice.Mode.SOFT);
+    voice.addTickables(staveNotes);
+
+    var fmtW = Math.max(120, stave.getNoteEndX() - stave.getNoteStartX() - 30);
+    new VF.Formatter().joinVoices([voice]).format([voice], fmtW);
+    voice.draw(ctx, stave);
+
+    // iPad で比率を保って拡縮できるよう viewBox 化
+    var svg = scoreDiv.querySelector('svg');
+    if(svg){
+      svg.setAttribute('viewBox', '0 0 ' + SCORE_W + ' ' + SCORE_H);
+      svg.removeAttribute('width');
+      svg.removeAttribute('height');
+    }
+  }
+
+  // ---- 問題生成 ------------------------------------------------------
+  function newProblem(){
+    state.clef = Math.random() < 0.5 ? 'treble' : 'bass';
+    var pool = state.clef === 'treble' ? TREBLE_POOL : BASS_POOL;
+
+    if(state.level === 1){
+      var p = pick(pool);
+      state.notes = [{ letter:p.letter, octave:p.octave, accidental:accidentalFor(p.letter) }];
+    } else if(state.level === 2){
+      state.notes = makeTriad(pool);
+    } else {
+      state.notes = [];
+      for(var i = 0; i < 4; i++){
+        var q = pick(pool);
+        state.notes.push({ letter:q.letter, octave:q.octave, accidental:accidentalFor(q.letter) });
+      }
+    }
+
+    clefLabel.textContent = state.clef === 'treble' ? 'ト音記号' : 'ヘ音記号';
+    answerCard.innerHTML = '<span class="placeholder">「こたえあわせ」を おしてね</span>';
+    render();
+  }
+
+  function showAnswer(){
+    var text = state.notes.map(jpName).join('・');
+    answerCard.innerHTML = '<span class="answer"></span>';
+    answerCard.querySelector('.answer').textContent = text;
+  }
+
+  // ---- 音声(Web Audio API / ピアノ風)-------------------------------
+  // 倍音を別オシレータで加算合成してピアノ風の音色を作る。エンベロープは
+  // setValueAtTime + linearRampToValueAtTime(線形ランプ)で組む。
+  // ※ Safari で音が出るかどうかは、エンベロープの種類ではなく、スタート操作内で
+  //   発音ノードを即時に start() して音声出力を起動できているかで決まる
+  //   (primeAudio を参照)。
+  var audioCtx = null;
+
+  // ピアノ風の倍音構成。decayFrac は基音に対する減衰の速さ
+  // (上の倍音ほど速く減衰 → 打鍵後に音色がまろやかになる)。
+  var PARTIALS = [
+    { mult: 1, type: 'triangle', amp: 1.00, decayFrac: 1.00 },
+    { mult: 2, type: 'sine',     amp: 0.42, decayFrac: 0.66 },
+    { mult: 3, type: 'sine',     amp: 0.18, decayFrac: 0.42 },
+    { mult: 4, type: 'sine',     amp: 0.09, decayFrac: 0.27 }
+  ];
+
+  // 1音をピアノ風に発音(加算合成。各倍音のエンベロープは線形ランプのみ)。
+  // peak は基音の最大ゲイン。dur は基音が鳴り切る長さ。
+  function playPiano(freq, when, dur, peak){
+    var attack = 0.008;
+    for(var i = 0; i < PARTIALS.length; i++){
+      var p = PARTIALS[i];
+      var f = freq * p.mult;
+      if(f > 12000) continue; // 可聴上限を超える倍音は省略
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = p.type;
+      osc.frequency.setValueAtTime(f, when);
+
+      var top = peak * p.amp;
+      var decayEnd = when + attack + dur * p.decayFrac;
+      gain.gain.setValueAtTime(0, when);
+      gain.gain.linearRampToValueAtTime(top, when + attack); // 速いアタック
+      gain.gain.linearRampToValueAtTime(0, decayEnd);        // 線形減衰
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(when);
+      osc.stop(decayEnd + 0.05);
+    }
+  }
+
+  // 音声出力の起動。これが本質的に重要: Safari/WebKit は AudioContext を
+  // resume() しただけでは音声出力ユニットが起動せず、後続の発音が無音になる
+  // ことがある。ユーザー操作(スタートのタップ)の中で実際に発音ノードを
+  // start() することで音声出力を確実に起動する。
+  // 音は出さない(ゲイン0)— ノードを start すること自体が起動条件のため。
+  function primeAudio(){
+    var o = audioCtx.createOscillator();
+    var g = audioCtx.createGain();
+    var t = audioCtx.currentTime;
+    g.gain.setValueAtTime(0, t); // 終始 0 = 無音
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start();
+    o.stop(t + 0.05);
+  }
+
+  function playProblem(){
+    if(!audioCtx) return;
+    audioCtx.resume(); // 毎回必ず再開を要求(running でも無害)
+    var now = audioCtx.currentTime + 0.06;
+
+    if(state.level === 3){
+      // 小節: 0.5秒間隔で順次(各音は余韻を残す)
+      state.notes.forEach(function(n, i){
+        playPiano(noteFreq(n), now + i * 0.5, 1.1, 0.30);
+      });
+    } else if(state.level === 2){
+      // 和音: 同時発音(3音ぶん音量を控えめに)
+      state.notes.forEach(function(n){
+        playPiano(noteFreq(n), now, 1.9, 0.15);
+      });
+    } else {
+      // 単音
+      playPiano(noteFreq(state.notes[0]), now, 1.7, 0.30);
+    }
+  }
+
+  // ---- レベル表示 ----------------------------------------------------
+  function updateLevelButtons(){
+    var btns = levelsBox.querySelectorAll('button');
+    btns.forEach(function(b){
+      b.classList.toggle('active', Number(b.dataset.level) === state.level);
+    });
+  }
+
+  // ---- イベント ------------------------------------------------------
+  startBtn.addEventListener('click', function(){
+    if(!audioCtx){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if(AC) audioCtx = new AC();
+    }
+    if(audioCtx){
+      audioCtx.resume();
+      primeAudio(); // 音声出力をこのタップ内で確実に起動する(無音)
+    }
+    overlay.classList.add('hidden');
+    updateLevelButtons();
+    newProblem();
+  });
+
+  levelsBox.addEventListener('click', function(e){
+    var btn = e.target.closest('button');
+    if(!btn) return;
+    state.level = Number(btn.dataset.level);
+    updateLevelButtons();
+    newProblem();
+  });
+
+  // 「こたえあわせ」: 答えを表示し、同時に音を鳴らす
+  answerBtn.addEventListener('click', function(){
+    showAnswer();
+    playProblem();
+  });
+  nextBtn.addEventListener('click', newProblem);
+
+  updateLevelButtons();
+})();
+</script>
+</body>
+</html>

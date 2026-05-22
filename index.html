@@ -242,10 +242,17 @@
     return null;
   }
 
-  // 3和音: 白鍵根音に3度ずつ堆積するとCメジャーのダイアトニック三和音になる
+  // 3和音(レベル2): 白鍵に3度ずつ堆積した三和音のうち、根音が C/D/F/G/A の
+  // もの = ハ長調・ニ短調・ヘ長調・ト長調・イ短調の主和音に限定する
+  // (根音 E のホ短調・根音 B の減三和音は除外)。
+  var TRIAD_ROOTS = ['C','D','F','G','A'];
   function makeTriad(pool){
     var maxRoot = pool.length - 5; // 第5音(根音+4)が音域に収まる範囲
-    var ri = randInt(0, maxRoot);
+    var roots = [];
+    for(var i = 0; i <= maxRoot; i++){
+      if(TRIAD_ROOTS.indexOf(pool[i].letter) !== -1) roots.push(i);
+    }
+    var ri = pick(roots);
     return [pool[ri], pool[ri+2], pool[ri+4]].map(function(p){
       return { letter:p.letter, octave:p.octave, accidental:null };
     });
@@ -377,45 +384,58 @@
   }
 
   // ---- 音声(Web Audio API / ピアノ風)-------------------------------
-  // 倍音を別オシレータで加算合成してピアノ風の音色を作る。エンベロープは
-  // setValueAtTime + linearRampToValueAtTime(線形ランプ)で組む。
+  // 倍音を別オシレータで加算合成してピアノ風の音色を作る。各倍音は速い
+  // アタックのあと指数関数的に減衰し(setTargetAtTime)、高い倍音ほど速く
+  // 減衰させることで打鍵後に音色がまろやかになる(実際のピアノの挙動)。
   // ※ Safari で音が出るかどうかは、エンベロープの種類ではなく、スタート操作内で
   //   発音ノードを即時に start() して音声出力を起動できているかで決まる
   //   (primeAudio を参照)。
   var audioCtx = null;
 
-  // ピアノ風の倍音構成。decayFrac は基音に対する減衰の速さ
-  // (上の倍音ほど速く減衰 → 打鍵後に音色がまろやかになる)。
+  // ピアノ風の倍音構成。n は基音に対する倍数、amp は基音に対する音量比、
+  // decay は基音の減衰時定数に対する比(上の倍音ほど小さい=速く減衰する)。
   var PARTIALS = [
-    { mult: 1, type: 'triangle', amp: 1.00, decayFrac: 1.00 },
-    { mult: 2, type: 'sine',     amp: 0.42, decayFrac: 0.66 },
-    { mult: 3, type: 'sine',     amp: 0.18, decayFrac: 0.42 },
-    { mult: 4, type: 'sine',     amp: 0.09, decayFrac: 0.27 }
+    { n: 1, amp: 1.00,  decay: 1.00 },
+    { n: 2, amp: 0.40,  decay: 0.66 },
+    { n: 3, amp: 0.22,  decay: 0.48 },
+    { n: 4, amp: 0.12,  decay: 0.36 },
+    { n: 5, amp: 0.07,  decay: 0.28 },
+    { n: 6, amp: 0.045, decay: 0.22 }
   ];
 
-  // 1音をピアノ風に発音(加算合成。各倍音のエンベロープは線形ランプのみ)。
-  // peak は基音の最大ゲイン。dur は基音が鳴り切る長さ。
+  // 1音をピアノ風に発音する。各倍音は速いアタックのあと指数関数的に減衰し
+  // (setTargetAtTime)、弦の硬さによる倍音のわずかな上ずり(インハーモニ
+  // シティ)も加える。when=発音開始, dur=打ち切るまでの長さ, peak=最大ゲイン。
   function playPiano(freq, when, dur, peak){
-    var attack = 0.008;
+    var attack  = 0.004;                              // 打鍵の速いアタック
+    var release = 0.12;                               // 末尾のフェード(ノイズ防止)
+    var INHARM  = 0.0004;                             // 倍音の上ずり係数
+    var baseDecay = 0.7 + Math.min(1.8, 150 / freq);  // 低音ほど長く伸びる
+
+    // 全倍音をまとめ、末尾だけ線形に絞ってプツッというノイズを防ぐ。
+    var voice = audioCtx.createGain();
+    voice.gain.setValueAtTime(peak, when);
+    voice.gain.setValueAtTime(peak, when + dur - release);
+    voice.gain.linearRampToValueAtTime(0, when + dur);
+    voice.connect(audioCtx.destination);
+
     for(var i = 0; i < PARTIALS.length; i++){
       var p = PARTIALS[i];
-      var f = freq * p.mult;
-      if(f > 12000) continue; // 可聴上限を超える倍音は省略
+      var f = freq * p.n * Math.sqrt(1 + INHARM * p.n * p.n);
+      if(f > 13000) continue; // 可聴上限を超える倍音は省略
       var osc = audioCtx.createOscillator();
       var gain = audioCtx.createGain();
-      osc.type = p.type;
+      osc.type = 'sine';
       osc.frequency.setValueAtTime(f, when);
 
-      var top = peak * p.amp;
-      var decayEnd = when + attack + dur * p.decayFrac;
       gain.gain.setValueAtTime(0, when);
-      gain.gain.linearRampToValueAtTime(top, when + attack); // 速いアタック
-      gain.gain.linearRampToValueAtTime(0, decayEnd);        // 線形減衰
+      gain.gain.linearRampToValueAtTime(p.amp, when + attack);          // 速いアタック
+      gain.gain.setTargetAtTime(0, when + attack, baseDecay * p.decay); // 指数減衰
 
       osc.connect(gain);
-      gain.connect(audioCtx.destination);
+      gain.connect(voice);
       osc.start(when);
-      osc.stop(decayEnd + 0.05);
+      osc.stop(when + dur + 0.03);
     }
   }
 

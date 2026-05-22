@@ -70,14 +70,21 @@
     box-shadow:0 6px 16px rgba(0,0,0,.10);
     text-align:center;
   }
-  .clef-label{
-    font-size:1.1rem;
-    font-weight:bold;
-    color:#7c5cd6;
-    margin-bottom:4px;
+  /* 420:220 の比率を持つ枠。SVG はこの枠を絶対配置で埋めるので、
+     viewBox の固有比の解釈に依存せず iOS Safari でも枠からはみ出さない。 */
+  #score{
+    position:relative;
+    width:100%;
+    padding-top:52.38%; /* 220 / 420 */
   }
-  #score{ width:100%; }
-  #score svg{ width:100%; height:auto; display:block; }
+  #score svg{
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    display:block;
+  }
   /* 答え表示 */
   .answer-card{
     background:#fff;
@@ -85,20 +92,24 @@
     box-shadow:0 6px 16px rgba(0,0,0,.10);
     padding:16px 10px;
     text-align:center;
-    min-height:84px;
+    height:84px;            /* 内容によらず高さを固定 */
     display:flex;
     align-items:center;
     justify-content:center;
+    overflow:hidden;
   }
   .answer-card .placeholder{
     font-size:1.1rem;
     color:#c9c2b4;
+    white-space:nowrap;
   }
+  /* 答えは常に 1 行。幅に収まらない時は JS(fitAnswer)でフォントを縮小する */
   .answer-card .answer{
     font-size:2.6rem;
     font-weight:bold;
     color:var(--accent);
     letter-spacing:.04em;
+    white-space:nowrap;
   }
   /* 操作ボタン */
   .actions{
@@ -180,7 +191,6 @@
   </div>
 
   <div class="score-card">
-    <div class="clef-label" id="clefLabel">&nbsp;</div>
     <div id="score"></div>
   </div>
 
@@ -259,14 +269,13 @@
   var overlay   = document.getElementById('overlay');
   var startBtn  = document.getElementById('startBtn');
   var levelsBox = document.getElementById('levels');
-  var clefLabel = document.getElementById('clefLabel');
   var scoreDiv  = document.getElementById('score');
   var answerCard= document.getElementById('answerCard');
   var answerBtn = document.getElementById('answerBtn');
   var nextBtn   = document.getElementById('nextBtn');
 
   // ---- 五線譜描画(VexFlow 4)----------------------------------------
-  var SCORE_W = 420, SCORE_H = 280;
+  var SCORE_W = 420, SCORE_H = 220;
 
   function render(){
     scoreDiv.innerHTML = '';
@@ -275,7 +284,7 @@
     renderer.resize(SCORE_W, SCORE_H);
     var ctx = renderer.getContext();
 
-    var stave = new VF.Stave(10, 100, SCORE_W - 30);
+    var stave = new VF.Stave(10, 40, SCORE_W - 30);
     stave.addClef(state.clef);
     if(state.level === 3) stave.addTimeSignature('4/4');
     stave.setContext(ctx).draw();
@@ -310,12 +319,17 @@
     new VF.Formatter().joinVoices([voice]).format([voice], fmtW);
     voice.draw(ctx, stave);
 
-    // iPad で比率を保って拡縮できるよう viewBox 化
+    // viewBox 化して #score の比率枠にフィットさせる。VexFlow が付ける
+    // 幅・高さ指定(属性/インラインスタイル)は取り除き、サイズは CSS の
+    // width/height:100% に委ねる(iPhone でのはみ出しを防ぐ)。
     var svg = scoreDiv.querySelector('svg');
     if(svg){
       svg.setAttribute('viewBox', '0 0 ' + SCORE_W + ' ' + SCORE_H);
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
       svg.removeAttribute('width');
       svg.removeAttribute('height');
+      svg.style.width = '100%';
+      svg.style.height = '100%';
     }
   }
 
@@ -337,7 +351,6 @@
       }
     }
 
-    clefLabel.textContent = state.clef === 'treble' ? 'ト音記号' : 'ヘ音記号';
     answerCard.innerHTML = '<span class="placeholder">「こたえあわせ」を おしてね</span>';
     render();
   }
@@ -345,7 +358,22 @@
   function showAnswer(){
     var text = state.notes.map(jpName).join('・');
     answerCard.innerHTML = '<span class="answer"></span>';
-    answerCard.querySelector('.answer').textContent = text;
+    var span = answerCard.querySelector('.answer');
+    span.textContent = text;
+    fitAnswer(span);
+  }
+
+  // 答えの文字を、高さ固定のボックスに 1 行で収まるようフォントを自動縮小する。
+  // 1 行の文字幅はフォントサイズに比例するので、はみ出した分だけ一度比例縮小する。
+  function fitAnswer(span){
+    span.style.fontSize = '';                                 // CSS 既定(2.6rem)へ戻す
+    var base  = parseFloat(getComputedStyle(span).fontSize);  // 既定サイズ(px)
+    var cs    = getComputedStyle(answerCard);
+    var avail = answerCard.clientWidth
+      - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    if(avail > 0 && span.scrollWidth > avail){
+      span.style.fontSize = (base * avail / span.scrollWidth * 0.97) + 'px';
+    }
   }
 
   // ---- 音声(Web Audio API / ピアノ風)-------------------------------
@@ -407,6 +435,16 @@
     o.stop(t + 0.05);
   }
 
+  // iPhone のマナースイッチ(消音スイッチ)が ON だと、Web Audio API の音は
+  // 既定で無音になる。iPad には消音スイッチが無いため、この問題は出ない。
+  // 音声セッションの種別を 'playback' にすると、消音スイッチに関わらず
+  // 音を鳴らせる(iOS 16.4+ / Safari がサポート。未対応環境では無視される)。
+  function enablePlaybackAudio(){
+    try{
+      if(navigator.audioSession) navigator.audioSession.type = 'playback';
+    }catch(e){ /* 未対応環境では何もしない */ }
+  }
+
   function playProblem(){
     if(!audioCtx) return;
     audioCtx.resume(); // 毎回必ず再開を要求(running でも無害)
@@ -438,6 +476,7 @@
 
   // ---- イベント ------------------------------------------------------
   startBtn.addEventListener('click', function(){
+    enablePlaybackAudio(); // 消音スイッチを無視して鳴らせるようにする
     if(!audioCtx){
       var AC = window.AudioContext || window.webkitAudioContext;
       if(AC) audioCtx = new AC();
@@ -466,6 +505,7 @@
   });
   nextBtn.addEventListener('click', newProblem);
 
+  enablePlaybackAudio(); // 早い段階で音声セッションを 'playback' に
   updateLevelButtons();
 })();
 </script>
